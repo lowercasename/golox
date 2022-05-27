@@ -1,0 +1,7 @@
+// This is a test file in Lox.
+
+fun foo() {
+    print "Hello, World!";
+}
+
+foo();
