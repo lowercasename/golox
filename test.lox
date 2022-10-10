@@ -3,6 +3,13 @@
 fun foo() {
     // Here's another comment.
     print "Hello, World!\n Foo's calling?";
+
+    /*
+     This is a block comment.
+     It can contain asterixes (*) and slashes (/).
+     It can span multiple lines.
+     It must be closed with a slash and asterix.
+    */
 }
 
 foo();

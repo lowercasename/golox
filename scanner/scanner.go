@@ -167,6 +167,22 @@ func (scanner *Scanner) scanToken() {
 			for scanner.peek() != '\n' && !scanner.isAtEnd() {
 				scanner.current++
 			}
+		} else if scanner.match('*') {
+			// If we have a forward slash and an asterisk, this is a block comment
+			// Keep advancing to end of comment block
+			for !(scanner.peek() == '*' && scanner.peekNext() == '/') && !scanner.isAtEnd() {
+				if scanner.peek() == '\n' {
+					scanner.line++
+				}
+				scanner.current++
+			}
+			// Unterminated comment block
+			if scanner.isAtEnd() {
+				logger.LogError(scanner.line, "Unterminated comment block.")
+				return
+			}
+			// Consume the closing */
+			scanner.current += 2
 		} else {
 			scanner.addToken(token.SLASH, nil)
 		}
