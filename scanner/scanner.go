@@ -1,246 +1,237 @@
 package scanner
 
 import (
-	"github.com/lowercasename/golox/errorreport"
-	"github.com/lowercasename/golox/tok"
 	"strconv"
+
+	"github.com/lowercasename/golox/logger"
+	"github.com/lowercasename/golox/token"
 )
 
-type sourceLocation struct {
-	Start   int
-	Current int
-	Line    int
+var keywords = map[string]token.Type{
+	"and":    token.AND,
+	"class":  token.CLASS,
+	"else":   token.ELSE,
+	"false":  token.FALSE,
+	"for":    token.FOR,
+	"fun":    token.FUN,
+	"if":     token.IF,
+	"nil":    token.NIL,
+	"or":     token.OR,
+	"print":  token.PRINT,
+	"return": token.RETURN,
+	"super":  token.SUPER,
+	"this":   token.THIS,
+	"true":   token.TRUE,
+	"var":    token.VAR,
+	"while":  token.WHILE,
 }
 
-func (location *sourceLocation) isAtEnd(runes []rune) bool {
-	return location.Current >= len(runes)
+type Scanner struct {
+	source  string
+	start   int
+	current int
+	line    int
+	tokens  []token.Token
 }
 
-func (location *sourceLocation) beginNewLexeme() {
-	location.Start = location.Current
+// Creates a new scanner
+func New(source string) Scanner {
+	scanner := Scanner{source: source, line: 1, tokens: make([]token.Token, 0)}
+	return scanner
 }
 
-var keywords = map[string]tok.TokenType{
-	"and":    tok.And,
-	"class":  tok.Class,
-	"else":   tok.Else,
-	"false":  tok.False,
-	"for":    tok.For,
-	"fun":    tok.Fun,
-	"if":     tok.If,
-	"nil":    tok.Nil,
-	"or":     tok.Or,
-	"print":  tok.Print,
-	"return": tok.Return,
-	"super":  tok.Super,
-	"this":   tok.This,
-	"true":   tok.True,
-	"var":    tok.Var,
-	"while":  tok.While,
-}
-
-func ScanTokens(source string, errorReport *errorreport.ErrorReport) []tok.Token {
-	// Set initial location
-	location := sourceLocation{Line: 1}
-	runes := []rune(source)
-
-	// Set up tokens array
-	tokens := make([]tok.Token, 0, len(runes)/2)
-
-	for !location.isAtEnd(runes) {
-		// We are at the beginning of the next lexeme
-		location.beginNewLexeme()
-		scanToken(&location, runes, &tokens, errorReport)
+func (scanner *Scanner) ScanTokens() []token.Token {
+	for !scanner.isAtEnd() {
+		// We're at the beginning of the next lexeme
+		scanner.start = scanner.current
+		scanner.scanToken()
 	}
-
 	// Add an EOF after all other tokens
-	addToken(&tokens, tok.EOF, nil)
-
-	return tokens
+	scanner.tokens = append(scanner.tokens, token.Token{Type: token.EOF, Lexeme: "", Literal: nil, Line: scanner.line})
+	return scanner.tokens
 }
 
-func scanToken(location *sourceLocation, runes []rune, tokens *[]tok.Token, errorReport *errorreport.ErrorReport) {
-	// First consume the current token...
-	r := runes[location.Current]
-	// ...then move to the next token in preparation for the next loop
-	// or for matching/peeking
-	location.Current++
+func (scanner *Scanner) addToken(tokenType token.Type, literal any) {
+	text := scanner.source[scanner.start:scanner.current]
+	scanner.tokens = append(scanner.tokens, token.Token{Type: tokenType, Lexeme: text, Literal: literal, Line: scanner.line})
+}
 
-	switch r {
+func (scanner *Scanner) handleIdentifier() {
+	for scanner.isAlphaNumeric(scanner.peek()) {
+		scanner.current++
+	}
+	tokenString := string(scanner.source[scanner.start:scanner.current])
+	// Check if the identifier is a reserved keyword
+	tokenType, identifierIsReservedKeyword := keywords[tokenString]
+	if identifierIsReservedKeyword {
+		scanner.addToken(tokenType, nil)
+	} else {
+		scanner.addToken(token.IDENTIFIER, nil)
+	}
+}
+
+func (scanner *Scanner) handleString() {
+	// Keep advancing to closing ", including over newlines
+	for scanner.peek() != '"' && !scanner.isAtEnd() {
+		if scanner.peek() == '\n' {
+			scanner.line++
+		}
+		scanner.current++
+	}
+	// Unterminated string
+	if scanner.isAtEnd() {
+		logger.LogError(scanner.line, "Unterminated string.")
+		return
+	}
+	// Consume the closing "
+	scanner.current++
+	// Trim the surrounding quotes
+	stringValue := string(scanner.source[scanner.start+1 : scanner.current-1])
+	scanner.addToken(token.STRING, stringValue)
+}
+
+func (scanner *Scanner) handleNumber() {
+	for scanner.isDigit(scanner.peek()) {
+		scanner.current++
+	}
+	// Look for a fractional part
+	if scanner.peek() == '.' && scanner.isDigit(scanner.peekNext()) {
+		// Consume the "."
+		scanner.current++
+		for scanner.isDigit(scanner.peek()) {
+			scanner.current++
+		}
+	}
+	numString := string(scanner.source[scanner.start:scanner.current])
+	numValue, err := strconv.ParseFloat(numString, 64)
+	if err != nil {
+		logger.LogError(scanner.line, "Could not convert number literal to float.")
+		return
+	}
+	scanner.addToken(token.NUMBER, numValue)
+}
+
+func (scanner *Scanner) scanToken() {
+	// Move to the next character (byte) of the source
+	c := scanner.advance()
+
+	switch c {
 	case '(':
-		addToken(tokens, tok.LeftParen, nil)
+		scanner.addToken(token.LEFTPAREN, nil)
 	case ')':
-		addToken(tokens, tok.RightParen, nil)
+		scanner.addToken(token.RIGHTPAREN, nil)
 	case '{':
-		addToken(tokens, tok.LeftBrace, nil)
+		scanner.addToken(token.LEFTBRACE, nil)
 	case '}':
-		addToken(tokens, tok.RightBrace, nil)
+		scanner.addToken(token.RIGHTBRACE, nil)
 	case ',':
-		addToken(tokens, tok.Comma, nil)
+		scanner.addToken(token.COMMA, nil)
 	case '.':
-		addToken(tokens, tok.Dot, nil)
+		scanner.addToken(token.DOT, nil)
 	case '-':
-		addToken(tokens, tok.Minus, nil)
+		scanner.addToken(token.MINUS, nil)
 	case '+':
-		addToken(tokens, tok.Plus, nil)
+		scanner.addToken(token.PLUS, nil)
 	case ';':
-		addToken(tokens, tok.Semicolon, nil)
+		scanner.addToken(token.SEMICOLON, nil)
 	case '*':
-		addToken(tokens, tok.Star, nil)
+		scanner.addToken(token.STAR, nil)
 	case '!':
-		if match('=', location, runes) {
-			addToken(tokens, tok.BangEqual, nil)
+		if scanner.match('=') {
+			scanner.addToken(token.BANGEQUAL, nil)
 		} else {
-			addToken(tokens, tok.Bang, nil)
+			scanner.addToken(token.BANG, nil)
 		}
 	case '=':
-		if match('=', location, runes) {
-			addToken(tokens, tok.EqualEqual, nil)
+		if scanner.match('=') {
+			scanner.addToken(token.EQUALEQUAL, nil)
 		} else {
-			addToken(tokens, tok.Equal, nil)
+			scanner.addToken(token.EQUAL, nil)
 		}
 	case '<':
-		if match('=', location, runes) {
-			addToken(tokens, tok.LessEqual, nil)
+		if scanner.match('=') {
+			scanner.addToken(token.LESSEQUAL, nil)
 		} else {
-			addToken(tokens, tok.Less, nil)
+			scanner.addToken(token.LESS, nil)
 		}
 	case '>':
-		if match('=', location, runes) {
-			addToken(tokens, tok.GreaterEqual, nil)
+		if scanner.match('=') {
+			scanner.addToken(token.GREATEREQUAL, nil)
 		} else {
-			addToken(tokens, tok.Greater, nil)
+			scanner.addToken(token.GREATER, nil)
 		}
 	case '/':
-		if match('/', location, runes) {
+		// If we have two forward slashes, this is a comment
+		if scanner.match('/') {
 			// Keep advancing to end of comment line
-			for peek(location, runes) != '\n' && !location.isAtEnd(runes) {
-				location.Current++
+			for scanner.peek() != '\n' && !scanner.isAtEnd() {
+				scanner.current++
 			}
 		} else {
-			addToken(tokens, tok.Slash, nil)
+			scanner.addToken(token.SLASH, nil)
 		}
 	case ' ', '\r', '\t':
 		// Ignore whitespace
 	case '\n':
-		location.Line++
+		scanner.line++
 	case '"':
-		handleString(location, tokens, runes, errorReport)
+		scanner.handleString()
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		handleNumber(location, tokens, runes, errorReport)
+		scanner.handleNumber()
 	default:
 		// At this point it's either an identifier or an unexpected
 		// character.
-		if isAlpha(r) {
-			handleIdentifier(location, tokens, runes, errorReport)
+		if scanner.isAlpha(c) {
+			scanner.handleIdentifier()
 		} else {
-			errorReport.Report(location.Line, "", "Unexpected character.")
+			logger.LogError(scanner.line, "Unexpected character.")
 		}
 	}
 }
 
-func handleIdentifier(location *sourceLocation, tokens *[]tok.Token, runes []rune, errorReport *errorreport.ErrorReport) {
-	for isAlphaNumeric(peek(location, runes)) {
-		location.Current++
-	}
-
-	tokenString := string(runes[location.Start:location.Current])
-	tokenType, keyExists := keywords[tokenString]
-	if keyExists {
-		addToken(tokens, tokenType, nil)
-	} else {
-		addToken(tokens, tok.Identifier, nil)
-	}
+func (scanner *Scanner) isAtEnd() bool {
+	return scanner.current >= len(scanner.source)
 }
 
-func handleString(location *sourceLocation, tokens *[]tok.Token, runes []rune, errorReport *errorreport.ErrorReport) {
-	// Keep advancing to closing "
-	for peek(location, runes) != '"' && !location.isAtEnd(runes) {
-		if peek(location, runes) == '\n' {
-			location.Line++
-		}
-		location.Current++
-	}
-
-	// Unterminated string
-	if location.isAtEnd(runes) {
-		errorReport.Report(location.Line, "", "Unterminated string.")
-		return
-	}
-
-	// Consume the closing "
-	location.Current++
-
-	// Trim the surrounding quotes
-	stringValue := string(runes[location.Start+1 : location.Current-1])
-	addToken(tokens, tok.String, stringValue)
+func (scanner *Scanner) isDigit(b byte) bool {
+	return b >= 0x30 && b <= 0x39
 }
 
-func handleNumber(location *sourceLocation, tokens *[]tok.Token, runes []rune, errorReport *errorreport.ErrorReport) {
-	for isDigit(peek(location, runes)) {
-		location.Current++
-	}
-
-	// Look for a fractional part
-	if peek(location, runes) == '.' && isDigit(peekNext(location, runes)) {
-		// Consume the "."
-		location.Current++
-
-		for isDigit(peek(location, runes)) {
-			location.Current++
-		}
-	}
-
-	numString := string(runes[location.Start:location.Current])
-	numValue, err := strconv.ParseFloat(numString, 64)
-	if err != nil {
-		errorReport.Report(location.Line, "", "Could not convert number literal to float.")
-		return
-	}
-
-	addToken(tokens, tok.Number, numValue)
+func (scanner *Scanner) isAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_'
 }
 
-func addToken(tokens *[]tok.Token, tokenType tok.TokenType, value any) {
-	*tokens = append(*tokens, tok.Token{TokenType: tokenType, Literal: value})
+func (scanner *Scanner) isAlphaNumeric(b byte) bool {
+	return scanner.isAlpha(b) || scanner.isDigit(b)
 }
 
-func match(expected rune, location *sourceLocation, runes []rune) bool {
-	if location.isAtEnd(runes) {
+// advance returns the current character and advances to the next
+func (sc *Scanner) advance() byte {
+	sc.current++
+	return sc.source[sc.current-1]
+}
+
+func (scanner *Scanner) match(expected byte) bool {
+	if scanner.isAtEnd() {
 		return false
 	}
-
-	if runes[location.Current] != expected {
+	if scanner.source[scanner.current] != expected {
 		return false
 	}
-
-	location.Current++
+	scanner.current++
 	return true
 }
 
-func peek(location *sourceLocation, runes []rune) rune {
-	if location.isAtEnd(runes) {
+func (scanner *Scanner) peek() byte {
+	if scanner.isAtEnd() {
 		return 0
 	}
-
-	return runes[location.Current]
+	return scanner.source[scanner.current]
 }
 
-func peekNext(location *sourceLocation, runes []rune) rune {
-	if location.Current+1 >= len(runes) {
+func (scanner *Scanner) peekNext() byte {
+	if scanner.current+1 >= len(scanner.source) {
 		return 0
 	}
-	return runes[location.Current+1]
-}
-
-func isDigit(r rune) bool {
-	return r >= 0x30 && r <= 0x39
-}
-
-func isAlpha(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_'
-}
-
-func isAlphaNumeric(r rune) bool {
-	return isAlpha(r) || isDigit(r)
+	return scanner.source[scanner.current+1]
 }

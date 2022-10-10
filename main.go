@@ -6,11 +6,44 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lowercasename/golox/errorreport"
+	"github.com/lowercasename/golox/logger"
 	"github.com/lowercasename/golox/scanner"
-	// "text/scanner"
-	// "github.com/lowercasename/golox/tok"
 )
+
+func runFile(path string) error {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	run(string(bytes))
+
+	if logger.HadError {
+		return errors.New("Scanner error!")
+	}
+
+	return nil
+}
+
+func runPrompt() {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("> ")
+	for scanner.Scan() {
+		run(scanner.Text())
+		fmt.Print("> ")
+	}
+}
+
+func run(source string) bool {
+	scanner := scanner.New(source)
+	tokens := scanner.ScanTokens()
+
+	for _, token := range tokens {
+		fmt.Printf("Token: %v\n", token.String())
+	}
+
+	// for tokens
+	return false
+}
 
 func main() {
 	args := os.Args[1:]
@@ -18,7 +51,7 @@ func main() {
 
 	switch {
 	case argsCount > 1:
-		fmt.Println("Usage: jlox [script]")
+		fmt.Println("Usage: golox [script]")
 	case argsCount == 1:
 		err := runFile(args[0])
 		if err != nil {
@@ -28,50 +61,3 @@ func main() {
 		runPrompt()
 	}
 }
-
-func runFile(path string) error {
-	errorReport := errorreport.NewErrorReport()
-
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	run(string(bytes), &errorReport)
-
-	if errorReport.HadError {
-		return errors.New("Scanner error!")
-	}
-
-	return nil
-}
-
-func runPrompt() {
-	errorReport := errorreport.NewErrorReport()
-
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("> ")
-	for scanner.Scan() {
-		run(scanner.Text(), &errorReport)
-		errorReport.HadError = false
-		fmt.Print("> ")
-	}
-}
-
-func run(source string, errorReport *errorreport.ErrorReport) bool {
-	tokens := scanner.ScanTokens(source, errorReport)
-
-	for _, token := range tokens {
-		fmt.Printf("Token: %v\n", token)
-	}
-
-	// for tokens
-	return false
-}
-
-// func reportError(line int, message string) {
-//     report(line, "", message)
-// }
-
-// func report(line int, where string, message string) {
-//     fmt.Printf("[line %d] Error %v: %v\n", line, where, message)
-// }
