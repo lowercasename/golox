@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lowercasename/golox/ast"
-	"github.com/lowercasename/golox/parse_error"
+	"github.com/lowercasename/golox/logger"
 	"github.com/lowercasename/golox/token"
 )
 
@@ -139,7 +139,7 @@ func (parser *Parser) primary() (ast.Expr, error) {
 		return &ast.Grouping{Expression: expr}, nil
 	}
 	// No match!
-	return nil, parse_error.MakeError(parser.peek(), "Expected expression.")
+	return nil, logger.ParserError(parser.peek(), "Expected expression.")
 }
 
 /* Internal methods */
@@ -148,7 +148,7 @@ func (parser *Parser) consume(t token.Type, message string) (token.Token, error)
 	if parser.check(t) {
 		return parser.advance(), nil
 	}
-	return parser.previous(), parse_error.MakeError(parser.peek(), message)
+	return parser.previous(), logger.ParserError(parser.peek(), message)
 }
 
 func (parser *Parser) match(types ...token.Type) bool {

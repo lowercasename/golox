@@ -1,10 +1,10 @@
 package interpreter
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/lowercasename/golox/ast"
+	"github.com/lowercasename/golox/logger"
 	"github.com/lowercasename/golox/token"
 )
 
@@ -12,7 +12,8 @@ func Interpret(expressions []ast.Expr) {
 	for _, expr := range expressions {
 		v, err := evaluate(expr)
 		if err != nil {
-			panic(err)
+			fmt.Print(err)
+			return
 		}
 		fmt.Println(stringify(v))
 	}
@@ -45,16 +46,16 @@ func evaluate(expr ast.Expr) (any, error) {
 		}
 		return v, nil
 	}
-	return nil, errors.New("Evaluation failed.")
+	return nil, logger.InterpreterError("Unknown expression type.")
 }
 
-func literal(n ast.Expr) (any, error) {
-	v := n.(*ast.Literal).Value
+func literal(expr ast.Expr) (any, error) {
+	v := expr.(*ast.Literal).Value
 	return v, nil
 }
 
-func grouping(n ast.Expr) (any, error) {
-	grouping := n.(*ast.Grouping)
+func grouping(expr ast.Expr) (any, error) {
+	grouping := expr.(*ast.Grouping)
 	v, err := evaluate(grouping.Expression)
 	if err != nil {
 		return nil, err
@@ -62,8 +63,8 @@ func grouping(n ast.Expr) (any, error) {
 	return v, nil
 }
 
-func unary(n ast.Expr) (any, error) {
-	unary := n.(*ast.Unary)
+func unary(expr ast.Expr) (any, error) {
+	unary := expr.(*ast.Unary)
 	right, err := evaluate(unary.Right)
 	if err != nil {
 		return nil, err
@@ -78,11 +79,11 @@ func unary(n ast.Expr) (any, error) {
 	case token.BANG:
 		return !isTruthy(right), nil
 	}
-	return nil, errors.New("Evaluation failed.")
+	return nil, logger.InterpreterError("Unknown unary operator.")
 }
 
-func binary(n ast.Expr) (any, error) {
-	binary := n.(*ast.Binary)
+func binary(expr ast.Expr) (any, error) {
+	binary := expr.(*ast.Binary)
 	left, err := evaluate(binary.Left)
 	if err != nil {
 		return nil, err
@@ -93,13 +94,22 @@ func binary(n ast.Expr) (any, error) {
 	}
 	switch binary.Operator.Type {
 	case token.MINUS:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) - right.(float64), nil
 	case token.SLASH:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) / right.(float64), nil
 	case token.STAR:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) * right.(float64), nil
 	case token.PLUS:
 		switch leftTerm := left.(type) {
@@ -114,35 +124,49 @@ func binary(n ast.Expr) (any, error) {
 				return leftTerm + rightTerm, nil
 			}
 		}
-		return nil, errors.New("Operands of '+' must both be either numbers or strings.")
+		return nil, logger.InterpreterErrorWithLineNumber(binary.Operator, "Operands of '+' must both be either numbers or strings.")
 	case token.GREATER:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) > right.(float64), nil
 	case token.GREATER_EQUAL:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) >= right.(float64), nil
 	case token.LESS:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) < right.(float64), nil
 	case token.LESS_EQUAL:
-		checkNumberOperands(binary.Operator, left, right)
+		err := checkNumberOperands(binary.Operator, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return left.(float64) <= right.(float64), nil
 	case token.BANG_EQUAL:
 		return !isEqual(left, right), nil
 	case token.EQUAL_EQUAL:
 		return isEqual(left, right), nil
 	}
-	return nil, errors.New("Evaluation failed.")
+	return nil, logger.InterpreterError("Evaluation failed.")
 }
 
 func isTruthy(value any) bool {
+	// nil is falsey.
 	if value == nil {
 		return false
 	}
-	v := value.(bool)
-	if v {
-		return v
+	// Booleans are truthy or falsey.
+	if value, ok := value.(bool); ok {
+		return value
 	}
+	// Everything else is truthy.
 	return true
 }
 
@@ -164,7 +188,7 @@ func checkNumberOperand(operator token.Token, operand any) error {
 	case int, float64:
 		return nil
 	}
-	return errors.New("Operand must be a number.")
+	return logger.InterpreterErrorWithLineNumber(operator, "Operand must be a number.")
 }
 
 func checkNumberOperands(operator token.Token, left any, right any) error {
@@ -174,9 +198,9 @@ func checkNumberOperands(operator token.Token, left any, right any) error {
 		case int, float64:
 			return nil
 		}
-		return errors.New("Right operand must be a number.")
+		return logger.InterpreterErrorWithLineNumber(operator, "Right operand must be a number.")
 	}
-	return errors.New("Left operand must be a number.")
+	return logger.InterpreterErrorWithLineNumber(operator, "Left operand must be a number.")
 }
 
 func stringify(value any) string {

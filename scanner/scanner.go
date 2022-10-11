@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/lowercasename/golox/logger"
@@ -80,7 +81,7 @@ func (scanner *Scanner) handleString() {
 	}
 	// Unterminated string
 	if scanner.isAtEnd() {
-		logger.LogError(scanner.line, "Unterminated string.")
+		fmt.Printf(logger.ScannerError(scanner.line, "Unterminated string.").Error())
 		return
 	}
 	// Consume the closing "
@@ -105,7 +106,7 @@ func (scanner *Scanner) handleNumber() {
 	numString := string(scanner.source[scanner.start:scanner.current])
 	numValue, err := strconv.ParseFloat(numString, 64)
 	if err != nil {
-		logger.LogError(scanner.line, "Could not convert number literal to float.")
+		fmt.Printf(logger.ScannerError(scanner.line, "Could not convert number literal to float.").Error())
 		return
 	}
 	scanner.addToken(token.NUMBER, numValue)
@@ -178,7 +179,7 @@ func (scanner *Scanner) scanToken() {
 			}
 			// Unterminated comment block
 			if scanner.isAtEnd() {
-				logger.LogError(scanner.line, "Unterminated comment block.")
+				fmt.Printf(logger.ScannerError(scanner.line, "Unterminated comment block.").Error())
 				return
 			}
 			// Consume the closing */
@@ -200,7 +201,7 @@ func (scanner *Scanner) scanToken() {
 		if scanner.isAlpha(c) {
 			scanner.handleIdentifier()
 		} else {
-			logger.LogError(scanner.line, "Unexpected character.")
+			fmt.Printf(logger.ScannerError(scanner.line, "Unexpected charater.").Error())
 		}
 	}
 }
