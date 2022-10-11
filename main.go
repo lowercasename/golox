@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lowercasename/golox/interpreter"
 	"github.com/lowercasename/golox/logger"
 	"github.com/lowercasename/golox/parser"
 	"github.com/lowercasename/golox/scanner"
@@ -45,9 +46,13 @@ func run(source string) {
 	// if logger.HadError {
 	// 	return
 	// }
-	for _, statement := range statements {
-		fmt.Printf("%v\n", statement.String())
-	}
+	// fmt.Println("==================")
+	// fmt.Println("Statements:")
+	// for _, statement := range statements {
+	// 	fmt.Printf("%v\n", statement.String())
+	// }
+	// fmt.Println("==================")
+	interpreter.Interpret(statements)
 	return
 }
 
