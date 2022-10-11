@@ -104,7 +104,10 @@ func binary(expr ast.Expr) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Check for division by zero.
 		if right.(float64) == 0 {
+			return nil, logger.InterpreterErrorWithLineNumber(binary.Operator, "Division by zero. Eldritch horrors invoked.")
+		}
 		return left.(float64) / right.(float64), nil
 	case token.STAR:
 		err := checkNumberOperands(binary.Operator, left, right)
@@ -118,9 +121,15 @@ func binary(expr ast.Expr) (any, error) {
 			switch rightTerm := right.(type) {
 			case float64:
 				return leftTerm + rightTerm, nil
+			case string:
+				// If the left term is a number and the right term is a string, convert the number to a string and concatenate.
+				return fmt.Sprintf("%v%v", leftTerm, rightTerm), nil
 			}
 		case string:
 			switch rightTerm := right.(type) {
+			case float64:
+				// If the left term is a string and the right term is a number, convert the number to a string and concatenate.
+				return fmt.Sprintf("%v%v", leftTerm, rightTerm), nil
 			case string:
 				return leftTerm + rightTerm, nil
 			}
