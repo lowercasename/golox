@@ -104,6 +104,7 @@ func binary(expr ast.Expr) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if right.(float64) == 0 {
 		return left.(float64) / right.(float64), nil
 	case token.STAR:
 		err := checkNumberOperands(binary.Operator, left, right)
