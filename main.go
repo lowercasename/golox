@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/lowercasename/golox/logger"
+	"github.com/lowercasename/golox/parser"
 	"github.com/lowercasename/golox/scanner"
 )
 
@@ -33,16 +34,21 @@ func runPrompt() {
 	}
 }
 
-func run(source string) bool {
+func run(source string) {
 	scanner := scanner.New(source)
 	tokens := scanner.ScanTokens()
-
-	for _, token := range tokens {
-		fmt.Printf("Token: %v\n", token.String())
+	// for _, token := range tokens {
+	// 	fmt.Printf("Token: %v\n", token.String())
+	// }
+	parser := parser.New(tokens)
+	statements := parser.Parse()
+	// if logger.HadError {
+	// 	return
+	// }
+	for _, statement := range statements {
+		fmt.Printf("%v\n", statement.String())
 	}
-
-	// for tokens
-	return false
+	return
 }
 
 func main() {

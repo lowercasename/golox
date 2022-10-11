@@ -117,13 +117,13 @@ func (scanner *Scanner) scanToken() {
 
 	switch c {
 	case '(':
-		scanner.addToken(token.LEFTPAREN, nil)
+		scanner.addToken(token.LEFT_PAREN, nil)
 	case ')':
-		scanner.addToken(token.RIGHTPAREN, nil)
+		scanner.addToken(token.RIGHT_PAREN, nil)
 	case '{':
-		scanner.addToken(token.LEFTBRACE, nil)
+		scanner.addToken(token.LEFT_BRACE, nil)
 	case '}':
-		scanner.addToken(token.RIGHTBRACE, nil)
+		scanner.addToken(token.RIGHT_BRACE, nil)
 	case ',':
 		scanner.addToken(token.COMMA, nil)
 	case '.':
@@ -138,25 +138,25 @@ func (scanner *Scanner) scanToken() {
 		scanner.addToken(token.STAR, nil)
 	case '!':
 		if scanner.match('=') {
-			scanner.addToken(token.BANGEQUAL, nil)
+			scanner.addToken(token.BANG_EQUAL, nil)
 		} else {
 			scanner.addToken(token.BANG, nil)
 		}
 	case '=':
 		if scanner.match('=') {
-			scanner.addToken(token.EQUALEQUAL, nil)
+			scanner.addToken(token.EQUAL_EQUAL, nil)
 		} else {
 			scanner.addToken(token.EQUAL, nil)
 		}
 	case '<':
 		if scanner.match('=') {
-			scanner.addToken(token.LESSEQUAL, nil)
+			scanner.addToken(token.LESS_EQUAL, nil)
 		} else {
 			scanner.addToken(token.LESS, nil)
 		}
 	case '>':
 		if scanner.match('=') {
-			scanner.addToken(token.GREATEREQUAL, nil)
+			scanner.addToken(token.GREATER_EQUAL, nil)
 		} else {
 			scanner.addToken(token.GREATER, nil)
 		}
