@@ -1,15 +1,19 @@
-// This is a test file in Lox.
+// Lox
 
-fun foo() {
-    // Here's another comment.
-    print "Hello, World!\n Foo's calling?";
-
-    /*
-     This is a block comment.
-     It can contain asterixes (*) and slashes (/).
-     It can span multiple lines.
-     It must be closed with a slash and asterix.
-    */
+fun helloWorld(name) {
+  if (name == "") {
+    print "Hello, World!";
+  } else {
+    print "Hello, " + name + "!";
+  }
 }
 
-foo();
+fun sayHi(first, last) {
+  print "Hi, " + first + " " + last + "!";
+}
+
+helloWorld("");
+
+helloWorld("Raphael");
+
+sayHi("Raphael", "Kabo");

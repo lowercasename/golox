@@ -2,70 +2,259 @@ package interpreter
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lowercasename/golox/ast"
+	"github.com/lowercasename/golox/environment"
 	"github.com/lowercasename/golox/logger"
 	"github.com/lowercasename/golox/token"
 )
 
-func Interpret(expressions []ast.Expr) {
+type Interpreter struct {
+	environment *environment.Environment
+}
+
+type Callable interface {
+	Call(interpreter *Interpreter, arguments []any) (any, error)
+	Arity() int
+}
+
+type Function struct {
+	Callable
+	declaration *ast.Function
+}
+
+type NativeFunction struct {
+	Callable
+	nativeCall func(interpreter *Interpreter, arguments []any) (any, error)
+	arity      int
+}
+
+func (f NativeFunction) Arity() int {
+	return f.arity
+}
+
+func (f NativeFunction) Call(interpreter *Interpreter, arguments []any) (any, error) {
+	return f.nativeCall(interpreter, arguments)
+}
+
+func (f Function) Arity() int {
+	return len(f.declaration.Parameters)
+}
+
+func (f Function) Call(interpreter *Interpreter, arguments []any) (any, error) {
+	interpreter.environment = environment.NewEnclosed(interpreter.environment)
+	for i, param := range f.declaration.Parameters {
+		interpreter.environment.Define(param.Lexeme, arguments[i])
+	}
+	for _, statement := range f.declaration.Body {
+		_, err := interpreter.evaluate(statement)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+func New() *Interpreter {
+	globals := environment.New()
+	globals.Define("clock", NativeFunction{
+		nativeCall: func(interpreter *Interpreter, arguments []any) (any, error) {
+			// Return time in seconds
+			return int(time.Now().UnixMilli()) / 1000, nil
+		},
+		arity: 0,
+	})
+	globals.Define("sqrt", NativeFunction{
+		nativeCall: func(interpreter *Interpreter, arguments []any) (any, error) {
+			argument := arguments[0].(float64)
+			return float64(argument * argument), nil
+		},
+		arity: 1,
+	})
+	return &Interpreter{
+		environment: globals,
+	}
+}
+
+func (i *Interpreter) Interpret(expressions []ast.Expr) {
 	for _, expr := range expressions {
-		v, err := evaluate(expr)
+		_, err := i.evaluate(expr)
 		if err != nil {
 			fmt.Print(err)
 			return
 		}
-		fmt.Println(stringify(v))
 	}
 }
 
-func evaluate(expr ast.Expr) (any, error) {
+func (i *Interpreter) evaluate(expr ast.Expr) (any, error) {
 	switch expr.(type) {
 	case *ast.Literal:
-		v, err := literal(expr)
+		v, err := i.literal(expr)
 		if err != nil {
 			return nil, err
 		}
 		return v, nil
 	case *ast.Grouping:
-		v, err := grouping(expr)
+		v, err := i.grouping(expr)
 		if err != nil {
 			return nil, err
 		}
 		return v, nil
 	case *ast.Unary:
-		v, err := unary(expr)
+		v, err := i.unary(expr)
 		if err != nil {
 			return nil, err
 		}
 		return v, nil
 	case *ast.Binary:
-		v, err := binary(expr)
+		v, err := i.binary(expr)
 		if err != nil {
 			return nil, err
 		}
 		return v, nil
+	case *ast.Var:
+		v, err := i.variableStmt(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Assign:
+		v, err := i.assign(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Print:
+		_, err := i.print(expr)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	case *ast.Expression:
+		v, err := i.evaluate(expr.(*ast.Expression).Expression)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Variable:
+		v, err := i.variableExpr(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Block:
+		v, err := i.block(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.If:
+		v, err := i.ifStmt(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Logical:
+		v, err := i.logical(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.While:
+		v, err := i.whileStmt(expr)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	case *ast.Call:
+		v, err := i.evaluate(expr.(*ast.Call).Callee)
+		if err != nil {
+			return nil, err
+		}
+		arguments := expr.(*ast.Call).Arguments
+		// Evaluate the arguments.
+		var evaluatedArguments []any
+		for _, argument := range arguments {
+			argument, err := i.evaluate(argument)
+			if err != nil {
+				return nil, err
+			}
+			evaluatedArguments = append(evaluatedArguments, argument)
+		}
+		// Get the function from the callee.
+		c, ok := v.(Callable)
+		if !ok {
+			return nil, logger.InterpreterError("Can only call functions and classes.")
+		}
+		if len(evaluatedArguments) != c.Arity() {
+			return nil, logger.InterpreterError(fmt.Sprintf("Expected %d arguments but got %d.", c.Arity(), len(evaluatedArguments)))
+		}
+		return c.Call(i, evaluatedArguments)
+	case *ast.Function:
+		function := Function{declaration: expr.(*ast.Function)}
+		i.environment.Define(function.declaration.Name.Lexeme, function)
+		return nil, nil
 	}
-	return nil, logger.InterpreterError("Unknown expression type.")
+	return nil, logger.InterpreterError("Unknown expression type: " + fmt.Sprintf("%T", expr))
 }
 
-func literal(expr ast.Expr) (any, error) {
+func (i *Interpreter) block(expr ast.Expr) (any, error) {
+	// Save the current environment so we can restore it later.
+	previousEnvironment := i.environment
+	// Create a new environment for the block.
+	i.environment = environment.NewEnclosed(previousEnvironment)
+	for _, statement := range expr.(*ast.Block).Statements {
+		_, err := i.evaluate(statement)
+		if err != nil {
+			// Restore the previous environment before returning the error
+			i.environment = previousEnvironment
+			return nil, err
+		}
+	}
+	// Restore the previous environment.
+	i.environment = previousEnvironment
+	return nil, nil
+}
+
+func (i *Interpreter) literal(expr ast.Expr) (any, error) {
 	v := expr.(*ast.Literal).Value
 	return v, nil
 }
 
-func grouping(expr ast.Expr) (any, error) {
+func (i *Interpreter) logical(expr ast.Expr) (any, error) {
+	logicalExpr := expr.(*ast.Logical)
+	// Evaluate the left operand first.
+	left, err := i.evaluate(logicalExpr.Left)
+	if err != nil {
+		return nil, err
+	}
+	if logicalExpr.Operator.Type == token.OR {
+		// If the left operand is true and we're doing an OR, we can short-circuit and return it.
+		if isTruthy(left) {
+			return left, nil
+		}
+	} else if logicalExpr.Operator.Type == token.AND {
+		// If the left operand is false and we're doing an AND, we can short-circuit and return it.
+		if !isTruthy(left) {
+			return left, nil
+		}
+	}
+	return i.evaluate(logicalExpr.Right)
+}
+
+func (i *Interpreter) grouping(expr ast.Expr) (any, error) {
 	grouping := expr.(*ast.Grouping)
-	v, err := evaluate(grouping.Expression)
+	v, err := i.evaluate(grouping.Expression)
 	if err != nil {
 		return nil, err
 	}
 	return v, nil
 }
 
-func unary(expr ast.Expr) (any, error) {
+func (i *Interpreter) unary(expr ast.Expr) (any, error) {
 	unary := expr.(*ast.Unary)
-	right, err := evaluate(unary.Right)
+	right, err := i.evaluate(unary.Right)
 	if err != nil {
 		return nil, err
 	}
@@ -82,13 +271,13 @@ func unary(expr ast.Expr) (any, error) {
 	return nil, logger.InterpreterError("Unknown unary operator.")
 }
 
-func binary(expr ast.Expr) (any, error) {
+func (i *Interpreter) binary(expr ast.Expr) (any, error) {
 	binary := expr.(*ast.Binary)
-	left, err := evaluate(binary.Left)
+	left, err := i.evaluate(binary.Left)
 	if err != nil {
 		return nil, err
 	}
-	right, err := evaluate(binary.Right)
+	right, err := i.evaluate(binary.Right)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +355,95 @@ func binary(expr ast.Expr) (any, error) {
 	}
 	return nil, logger.InterpreterError("Evaluation failed.")
 }
+
+func (i *Interpreter) ifStmt(expr ast.Expr) (any, error) {
+	ifStmt := expr.(*ast.If)
+	condition, err := i.evaluate(ifStmt.Condition)
+	if err != nil {
+		return nil, err
+	}
+	if isTruthy(condition) {
+		return i.evaluate(ifStmt.Then)
+	} else if ifStmt.Else != nil {
+		return i.evaluate(ifStmt.Else)
+	}
+	return nil, nil
+}
+
+func (i *Interpreter) print(expr ast.Expr) (any, error) {
+	print := expr.(*ast.Print)
+	v, err := i.evaluate(print.Expression)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(v)
+	return nil, nil
+}
+
+// Declare a variable in the current scope.
+func (i *Interpreter) variableStmt(expr ast.Expr) (any, error) {
+	variableStmt := expr.(*ast.Var)
+	var v any = nil
+	var err error
+	// If the variable has an initializer, evaluate it.
+	if variableStmt.Initializer != nil {
+		v, err = i.evaluate(variableStmt.Initializer)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Declare the variable. If it wasn't initialized, it will be nil.
+	i.environment.Define(variableStmt.Name.Lexeme, v)
+	return nil, nil
+}
+
+func (i *Interpreter) whileStmt(expr ast.Expr) (any, error) {
+	whileStmt := expr.(*ast.While)
+	for {
+		// Evaluate the condition.
+		condition, err := i.evaluate(whileStmt.Condition)
+		if err != nil {
+			return nil, err
+		}
+		// If the condition is false, break out of the loop.
+		if !isTruthy(condition) {
+			break
+		}
+		// Evaluate the body.
+		_, err = i.evaluate(whileStmt.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+// Assign a value to a variable.
+func (i *Interpreter) assign(expr ast.Expr) (any, error) {
+	assign := expr.(*ast.Assign)
+	// Evaluate the value to assign because otherwise it will end up
+	// as a pointer to ast.Literal and not the actual value.
+	v, err := i.evaluate(assign.Value)
+	if err != nil {
+		return nil, err
+	}
+	_, err2 := i.environment.Assign(assign.Name, v)
+	if err2 != nil {
+		return nil, err2
+	}
+	return v, nil
+}
+
+func (i *Interpreter) variableExpr(expr ast.Expr) (any, error) {
+	variableExpr := expr.(*ast.Variable)
+	v, err := i.environment.Get(variableExpr.Name)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+/* Helper functions */
 
 func isTruthy(value any) bool {
 	// nil is falsey.

@@ -1,0 +1,34 @@
+// var iLikeCookies = true;
+// var iLikePancakes = true;
+// var cookiesAvailable = true;
+// var pancakesAvailable = false;
+
+// if (iLikeCookies and cookiesAvailable) {
+//     print "I'll have some cookies!";
+// } else if (iLikePancakes and pancakesAvailable) {
+//     print "I'll have some pancakes!";
+// } else {
+//     print "I'll have some fruit!";
+//     print "This is because:";
+//     if (!iLikeCookies) {
+//         print "I don't like cookies";
+//     }
+//     if (!cookiesAvailable) {
+//         print "There are no cookies available";
+//     }
+//     if (!iLikePancakes) {
+//         print "I don't like pancakes";
+//     }
+//     if (!pancakesAvailable) {
+//         print "There are no pancakes available";
+//     }
+// }
+var a = 0;
+
+while (a < 1000000) {
+    a = a + 1;
+}
+
+print a;
+
+print "Done!";
